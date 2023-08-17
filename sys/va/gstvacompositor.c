@@ -748,7 +748,8 @@ gst_va_compositor_decide_allocation (GstAggregator * agg, GstQuery * query)
       goto bail;
     }
 
-    if (gst_caps_is_dmabuf (caps) && GST_VIDEO_INFO_IS_RGB (&info)) {
+    if (GST_VA_DISPLAY_IS_IMPLEMENTATION (self->display, INTEL_I965) &&
+        gst_caps_is_dmabuf (caps) && GST_VIDEO_INFO_IS_RGB (&info)) {
       usage_hint = VA_SURFACE_ATTRIB_USAGE_HINT_GENERIC;
     } else {
       usage_hint = va_get_surface_usage_hint (self->display,
