@@ -76,6 +76,7 @@ struct _GstMsdkDec
   GstBufferPool *other_pool;
   /* downstream pool info based on allocation query */
   GstVideoInfo non_msdk_pool_info;
+  GstVideoInfo alloc_info;
   mfxFrameAllocResponse alloc_resp;
   gboolean use_dmabuf;
   gboolean do_copy;
@@ -120,6 +121,8 @@ struct _GstMsdkDec
 #if (MFX_VERSION >= 1025)
   mfxExtDecodeErrorReport error_report;
 #endif
+
+  mfxVersion version;
 };
 
 struct _GstMsdkDecClass
