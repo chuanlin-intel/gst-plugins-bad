@@ -1836,7 +1836,7 @@ gst_va_filter_compose (GstVaFilter * self, GstVaComposeTransaction * tx)
   dpy = gst_va_display_get_va_dpy (self->display);
 
   sample = tx->next (tx->user_data);
-  for (; sample; sample = tx->next (tx->user_data)) {
+  for(int i=0; sample; i++, sample = tx->next (tx->user_data)) {
     VAProcPipelineParameterBuffer params = { 0, };
     VABufferID buffer;
     VASurfaceID in_surface;
@@ -1877,6 +1877,15 @@ gst_va_filter_compose (GstVaFilter * self, GstVaComposeTransaction * tx)
     if (status != VA_STATUS_SUCCESS) {
       GST_ERROR_OBJECT (self, "vaBeginPicture: %s", vaErrorStr (status));
       return FALSE;
+    }
+
+    if(0==i)
+    {//With alpha, set black background color
+       params.output_background_color = 0xff000000;
+    }
+    else
+    {//Without alpha, transparent background
+       params.output_background_color = 0;
     }
 
     status = vaCreateBuffer (dpy, self->context,
