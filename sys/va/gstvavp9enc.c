@@ -2148,7 +2148,7 @@ gst_va_vp9_enc_reconfig (GstVaBaseEnc * base)
     base->preferred_output_delay = 0;
   } else {
     /* FIXME: An experience value for most of the platforms. */
-    base->preferred_output_delay = 4;
+    base->preferred_output_delay = 2;
   }
 
   base->profile = profile;
