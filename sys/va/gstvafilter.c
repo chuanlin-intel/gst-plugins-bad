@@ -1906,8 +1906,10 @@ gst_va_filter_compose (GstVaFilter * self, GstVaComposeTransaction * tx)
     status = vaEndPicture (dpy, self->context);
     if (status != VA_STATUS_SUCCESS) {
       GST_ERROR_OBJECT (self, "vaEndPicture: %s", vaErrorStr (status));
+      gst_clear_buffer (&sample->wrapped_buffer);
       return FALSE;
     }
+    gst_clear_buffer (&sample->wrapped_buffer);
   }
 
   return TRUE;
@@ -1917,6 +1919,8 @@ fail_end_pic:
     status = vaEndPicture (dpy, self->context);
     if (status != VA_STATUS_SUCCESS)
       GST_ERROR_OBJECT (self, "vaEndPicture: %s", vaErrorStr (status));
+
+    gst_clear_buffer (&sample->wrapped_buffer);
     return FALSE;
   }
 }
