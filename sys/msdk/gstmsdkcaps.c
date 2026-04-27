@@ -1088,7 +1088,7 @@ _dec_get_resolution_range (mfxSession * session,
 
   _codec_init_param (&in, codec_id, DEC_IOPATTERN, DEFAULT_VIDEO_FORMAT);
   if (codec_id == MFX_CODEC_AV1)
-    in.mfx.CodecLevel = MFX_LEVEL_AV1_41;
+    in.mfx.CodecLevel = MFX_LEVEL_AV1_63;
   if (codec_id == MFX_CODEC_JPEG)
     _jpegdec_set_color_format (&in, GST_VIDEO_FORMAT_NV12);
   out = in;
@@ -1149,7 +1149,7 @@ _dec_get_supported_formats (mfxSession * session,
 
   _codec_init_param (&in, codec_id, DEC_IOPATTERN, DEFAULT_VIDEO_FORMAT);
   if (codec_id == MFX_CODEC_AV1)
-    in.mfx.CodecLevel = MFX_LEVEL_AV1_41;
+    in.mfx.CodecLevel = MFX_LEVEL_AV1_63;
   out = in;
 
   g_value_init (&fmts, GST_TYPE_LIST);
