@@ -83,8 +83,8 @@ static GstElementClass *parent_class = NULL;
 /* *INDENT-OFF* */
 static const gchar *src_caps_str =
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_VA,
-        "{ NV12, P010_10LE }") " ;"
-    GST_VIDEO_CAPS_MAKE ("{ NV12, P010_10LE }");
+        "{ NV12, P010_10LE, YUY2, Y210 }") " ;"
+    GST_VIDEO_CAPS_MAKE ("{ NV12, P010_10LE, YUY2, Y210 }");
 /* *INDENT-ON* */
 
 static const gchar *sink_caps_str = "video/x-av1";
@@ -162,6 +162,9 @@ _get_profile (GstVaAV1Dec * self, const GstAV1SequenceHeaderOBU * seq_hdr)
     case GST_AV1_PROFILE_1:
       profile = VAProfileAV1Profile1;
       break;
+    case GST_AV1_PROFILE_2:
+      profile = VAProfileAV1Profile2;
+      break;
     default:
       GST_ERROR_OBJECT (self, "Unsupported av1 profile value %d",
           seq_hdr->seq_profile);
@@ -203,6 +206,13 @@ _get_rtformat (GstVaAV1Dec * self, VAProfile profile,
         return VA_RT_FORMAT_YUV444;
       } else if (seq_header->bit_depth == 10) {
         return VA_RT_FORMAT_YUV444_10;
+      }
+      break;
+    case VAProfileAV1Profile2:
+      if (seq_header->bit_depth == 8) {
+        return VA_RT_FORMAT_YUV422;
+      } else if (seq_header->bit_depth == 10) {
+        return VA_RT_FORMAT_YUV422_10;
       }
       break;
     default:
