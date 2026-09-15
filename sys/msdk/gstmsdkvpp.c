@@ -1526,6 +1526,12 @@ gst_msdkvpp_fixate_caps (GstBaseTransform * trans,
 {
   GstMsdkVPP *thiz = GST_MSDKVPP (trans);
   GstCaps *result = NULL;
+  //TODO
+  GST_ERROR ("trans:%p (%" GST_PTR_FORMAT ")", trans, trans);
+  GST_ERROR ("direction: %s (%d)", (direction == GST_PAD_SRC) ? "GST_PAD_SRC" : (direction == GST_PAD_SINK) ? "GST_PAD_SINK" : "GST_PAD_UNKNOWN", direction);
+  GST_ERROR ("caps:%p (%" GST_PTR_FORMAT ")", caps, caps);
+  GST_ERROR ("othercaps:%p (%" GST_PTR_FORMAT ")", othercaps, othercaps);
+  GST_ERROR ("thiz:%p (%" GST_PTR_FORMAT ")", thiz, thiz);
 
   if (direction == GST_PAD_SRC) {
     result = gst_caps_fixate (othercaps);
@@ -1534,14 +1540,18 @@ gst_msdkvpp_fixate_caps (GstBaseTransform * trans,
      * Override mirroring & rotation properties once video-direction
      * is set explicitly
      */
-    if (thiz->flags & GST_MSDK_FLAG_VIDEO_DIRECTION)
+    GST_ERROR ("thiz->flags=%d", thiz->flags != NULL);
+    GST_ERROR ("GST_MSDK_FLAG_VIDEO_DIRECTION=%d", GST_MSDK_FLAG_VIDEO_DIRECTION ? 1 : 0);
+    if (thiz->flags & GST_MSDK_FLAG_VIDEO_DIRECTION) {
+      GST_ERROR ("thiz->video_direction=%d, thiz->mirroring=%d, thiz->rotation=%d", thiz->video_direction, thiz->mirroring, thiz->rotation);
       gst_msdk_get_mfx_video_orientation_from_video_direction
           (thiz->video_direction, &thiz->mirroring, &thiz->rotation);
+    }
 
     result = gst_msdkvpp_fixate_srccaps (thiz, caps, othercaps);
   }
 
-  GST_DEBUG_OBJECT (trans, "fixated to %" GST_PTR_FORMAT, result);
+  GST_ERROR_OBJECT (trans, "fixated to %" GST_PTR_FORMAT, result);
   gst_caps_unref (othercaps);
 
   return result;
