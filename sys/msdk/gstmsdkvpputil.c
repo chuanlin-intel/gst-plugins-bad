@@ -69,119 +69,130 @@ static GstCaps *
 fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
 {
   GstVideoFormat fmt = GST_VIDEO_FORMAT_UNKNOWN;
-  guint i, size, fixated_idx = 0;
-  GstStructure *s, *out = NULL;
+  guint size, fixated_idx = 0, i;
+  GstStructure *s, *out;
   GstCapsFeatures *features;
-  GstCaps *ret;
   const GValue *format;
-  gboolean is_va = FALSE, is_dma = FALSE, is_d3d = FALSE;
   gboolean fixate = FALSE;
 #ifndef _WIN32
-  guint64 modifier = DRM_FORMAT_MOD_INVALID;
-  guint32 fourcc;
+  gboolean fixated_is_dma = FALSE;
+  guint64 fixated_modifier = DRM_FORMAT_MOD_INVALID;
 #endif
 
   if (!caps)
     return NULL;
-  size = gst_caps_get_size (caps);
 
-  for (i = 0; i < size; i++) {
+  size = gst_caps_get_size (caps);
+  // Outer loop: iterate per memory format
+  for (i = 0; i < size && !fixate; i++) {
+    gboolean is_list;
+    gboolean is_dma;
+    guint len, j;
+
     s = gst_caps_get_structure (caps, i);
     features = gst_caps_get_features (caps, i);
-    is_va = is_dma = is_d3d = FALSE;
-
-    if (gst_caps_features_contains (features, GST_CAPS_FEATURE_MEMORY_DMABUF)) {
-      format = gst_structure_get_value (s, "drm-format");
-      is_dma = TRUE;
-    } else {
-      format = gst_structure_get_value (s, "format");
-#ifndef _WIN32
-      if (gst_caps_features_contains (features, GST_CAPS_FEATURE_MEMORY_VA))
-        is_va = TRUE;
-#else
-      if (gst_caps_features_contains (features,
-              GST_CAPS_FEATURE_MEMORY_D3D11_MEMORY))
-        is_d3d = TRUE;
-#endif
-    }
-
-    if (format == NULL)
+    is_dma = gst_caps_features_contains (features, GST_CAPS_FEATURE_MEMORY_DMABUF);
+    format = gst_structure_get_value (s, is_dma ? "drm-format" : "format");
+    if (!format)
       continue;
 
-    if (GST_VALUE_HOLDS_LIST (format)) {
-      gint j, len;
+    is_list = GST_VALUE_HOLDS_LIST (format);
+    len = is_list ? gst_value_list_get_size (format) : 1;
+    GST_DEBUG_OBJECT (thiz, "have %u formats", len);
 
-      len = gst_value_list_get_size (format);
-      GST_DEBUG_OBJECT (thiz, "have %d formats", len);
-      for (j = 0; j < len; j++) {
-        const GValue *val;
-
-        val = gst_value_list_get_value (format, j);
-        if (G_VALUE_HOLDS_STRING (val)) {
+    // Inner loop: iterate per color format
+    for (j = 0; j < len; j++) {
+      const GValue *val = is_list ? gst_value_list_get_value (format, j) :
+          format;
+      GstVideoFormat candidate;
 #ifndef _WIN32
-          if (is_dma) {
-            fourcc = gst_video_dma_drm_fourcc_from_string
-                (g_value_get_string (val), &modifier);
-            fmt = gst_va_video_format_from_drm_fourcc (fourcc);
-          } else {
-            fmt = gst_video_format_from_string (g_value_get_string (val));
-          }
-#else
-          fmt = gst_video_format_from_string (g_value_get_string (val));
+      guint64 candidate_modifier = DRM_FORMAT_MOD_INVALID;
 #endif
-          if (fmt == GST_VIDEO_FORMAT_UNKNOWN)
-            continue;
-          if (fmt == GST_VIDEO_INFO_FORMAT (vinfo)) {
-            fixate = TRUE;
-            fixated_idx = i;
-            break;
-          }
-        }
-      }
-    } else if (G_VALUE_HOLDS_STRING (format)) {
+
+      if (!G_VALUE_HOLDS_STRING (val))
+        continue;
+
 #ifndef _WIN32
       if (is_dma) {
-        fourcc = gst_video_dma_drm_fourcc_from_string
-            (g_value_get_string (format), &modifier);
-        fmt = gst_va_video_format_from_drm_fourcc (fourcc);
+        guint32 fourcc = gst_video_dma_drm_fourcc_from_string
+            (g_value_get_string (val), &candidate_modifier);
+
+        candidate = gst_va_video_format_from_drm_fourcc (fourcc);
       } else {
-        fmt = gst_video_format_from_string (g_value_get_string (format));
+        candidate = gst_video_format_from_string (g_value_get_string (val));
       }
 #else
-      fmt = gst_video_format_from_string (g_value_get_string (format));
+      candidate = gst_video_format_from_string (g_value_get_string (val));
 #endif
-      if (fmt == GST_VIDEO_FORMAT_UNKNOWN)
+      if (candidate == GST_VIDEO_FORMAT_UNKNOWN)
         continue;
 
-      /* size > 1 means downstream doesn't specify the caps directly, so we
-       * still need to compare fmt with the one in vpp sinkcaps */
-      if (size > 1 && fmt != GST_VIDEO_INFO_FORMAT (vinfo))
+      if (candidate != GST_VIDEO_INFO_FORMAT (vinfo) && (is_list || size > 1))
         continue;
 
+      // Proceed fixate only when candidate == vinfo OR (size == 1 AND candidate != vinfo)
+      fmt = candidate;
+      fixated_idx = i;
       fixate = TRUE;
+#ifndef _WIN32
+      fixated_is_dma = is_dma;
+      fixated_modifier = candidate_modifier;
+#endif
       break;
     }
-    if (fixate)
-      break;
   }
 
-  if (!fixate)
+  if (!fixate) {
+    // Fallback to NV12
     fmt = GST_VIDEO_FORMAT_NV12;
+
+#ifndef _WIN32
+    // fixated_idx is always 0 as initialized and not updated when no match in nested loops
+    s = gst_caps_get_structure (caps, fixated_idx);
+    features = gst_caps_get_features (caps, fixated_idx);
+    fixated_is_dma = gst_caps_features_contains (features, GST_CAPS_FEATURE_MEMORY_DMABUF);
+
+    if (fixated_is_dma) {
+      // Search for a supported modifier if DMA selected for fixation
+      format = gst_structure_get_value (s, "drm-format");
+      size = GST_VALUE_HOLDS_LIST (format) ? gst_value_list_get_size (format) : 1;
+
+      if (!format)
+        return NULL;
+
+      for (i = 0; i < size; i++) {
+        const GValue *val = GST_VALUE_HOLDS_LIST (format) ?
+            gst_value_list_get_value (format, i) : format;
+        guint64 modifier = DRM_FORMAT_MOD_INVALID;
+        guint32 fourcc;
+
+        if (!G_VALUE_HOLDS_STRING (val))
+          continue;
+
+        fourcc = gst_video_dma_drm_fourcc_from_string
+            (g_value_get_string (val), &modifier);
+        if (gst_va_video_format_from_drm_fourcc (fourcc) == fmt) {
+          fixated_modifier = modifier;
+          break;
+        }
+      }
+
+      if (fixated_modifier == DRM_FORMAT_MOD_INVALID)
+        return NULL;
+    }
+#endif
+  }
 
   out = gst_structure_copy (gst_caps_get_structure (caps, fixated_idx));
   features = gst_caps_features_copy (gst_caps_get_features (caps, fixated_idx));
 
 #ifndef _WIN32
-  if (is_dma) {
-    gchar *drm_fmt_name;
+  if (fixated_is_dma) {
+    gchar *drm_format = gst_video_dma_drm_fourcc_to_string
+        (gst_va_drm_fourcc_from_video_format (fmt), fixated_modifier);
 
-    g_assert (modifier != DRM_FORMAT_MOD_INVALID);
-
-    drm_fmt_name = gst_video_dma_drm_fourcc_to_string
-        (gst_va_drm_fourcc_from_video_format (fmt), modifier);
-
-    gst_structure_set (out, "drm-format", G_TYPE_STRING, drm_fmt_name, NULL);
-    g_free (drm_fmt_name);
+    gst_structure_set (out, "drm-format", G_TYPE_STRING, drm_format, NULL);
+    g_free (drm_format);
   } else {
     gst_structure_set (out, "format", G_TYPE_STRING,
         gst_video_format_to_string (fmt), NULL);
@@ -191,24 +202,9 @@ fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
       gst_video_format_to_string (fmt), NULL);
 #endif
 
-  ret = gst_caps_new_full (out, NULL);
-  gst_caps_set_features_simple (ret, features);
-#ifndef _WIN32
-  if (is_va)
-    gst_caps_set_features (ret, 0,
-        gst_caps_features_new_single_static_str (GST_CAPS_FEATURE_MEMORY_VA));
-#else
-  if (is_d3d)
-    gst_caps_set_features (ret, 0,
-        gst_caps_features_new_single_static_str
-        (GST_CAPS_FEATURE_MEMORY_D3D11_MEMORY));
-#endif
-  else if (is_dma)
-    gst_caps_set_features (ret, 0,
-        gst_caps_features_new_single_static_str
-        (GST_CAPS_FEATURE_MEMORY_DMABUF));
-
-  return ret;
+  caps = gst_caps_new_full (out, NULL);
+  gst_caps_set_features_simple (caps, features);
+  return caps;
 }
 
 static gboolean
