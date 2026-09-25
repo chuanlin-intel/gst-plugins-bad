@@ -78,6 +78,7 @@ fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
   gboolean fixate = FALSE;
 #ifndef _WIN32
   guint64 modifier = DRM_FORMAT_MOD_INVALID;
+  guint64 fallback_modifier = DRM_FORMAT_MOD_INVALID;
   guint32 fourcc;
 #endif
 
@@ -123,6 +124,8 @@ fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
             fourcc = gst_video_dma_drm_fourcc_from_string
                 (g_value_get_string (val), &modifier);
             fmt = gst_va_video_format_from_drm_fourcc (fourcc);
+            if (i == 0 && fmt == GST_VIDEO_FORMAT_NV12)
+              fallback_modifier = modifier;
           } else {
             fmt = gst_video_format_from_string (g_value_get_string (val));
           }
@@ -144,6 +147,8 @@ fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
         fourcc = gst_video_dma_drm_fourcc_from_string
             (g_value_get_string (format), &modifier);
         fmt = gst_va_video_format_from_drm_fourcc (fourcc);
+        if (i == 0 && fmt == GST_VIDEO_FORMAT_NV12)
+          fallback_modifier = modifier;
       } else {
         fmt = gst_video_format_from_string (g_value_get_string (format));
       }
@@ -159,6 +164,7 @@ fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
         continue;
 
       fixate = TRUE;
+      fixated_idx = i;
       break;
     }
     if (fixate)
@@ -168,12 +174,26 @@ fixate_output_format (GstMsdkVPP * thiz, GstVideoInfo * vinfo, GstCaps * caps)
   if (!fixate)
     fmt = GST_VIDEO_FORMAT_NV12;
 
+  features = gst_caps_get_features (caps, fixated_idx);
+  is_dma = gst_caps_features_contains (features,
+      GST_CAPS_FEATURE_MEMORY_DMABUF);
+#ifndef _WIN32
+  is_va = gst_caps_features_contains (features,
+      GST_CAPS_FEATURE_MEMORY_VA);
+#else
+  is_d3d = gst_caps_features_contains (features,
+      GST_CAPS_FEATURE_MEMORY_D3D11_MEMORY);
+#endif
+
   out = gst_structure_copy (gst_caps_get_structure (caps, fixated_idx));
   features = gst_caps_features_copy (gst_caps_get_features (caps, fixated_idx));
 
 #ifndef _WIN32
   if (is_dma) {
     gchar *drm_fmt_name;
+
+    if (!fixate)
+      modifier = fallback_modifier;
 
     g_assert (modifier != DRM_FORMAT_MOD_INVALID);
 
